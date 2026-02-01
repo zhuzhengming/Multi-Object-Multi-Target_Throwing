@@ -17,7 +17,7 @@ class SimulationTracking:
         self.hedgehog_path = os.path.abspath(os.path.join(current_dir, '../hedgehog_data'))
         self.brt_path = os.path.abspath(os.path.join(current_dir, '../brt_data'))
         self.robot_path = os.path.abspath(os.path.join(current_dir, '../description/iiwa7_allegro_throwing.xml'))
-        self.test_config_path = os.path.abspath(os.path.join(current_dir, '../config/test_samples.yaml'))
+        self.test_config_path = os.path.abspath(os.path.join(current_dir, '../config/test_samples_random.yaml'))
         
         self.q_min = np.array([-2.96705972839, -2.09439510239, -2.96705972839, -2.09439510239, -2.96705972839,
                           -2.09439510239, -3.05432619099])
@@ -64,11 +64,11 @@ class SimulationTracking:
             # Random generation using Polar Coordinates
             def generate_random_box():
                 # Continuous range: 1.2 < r < 2.5
-                r = random.uniform(1.2, 2.0)
+                r = random.uniform(1.5, 2.5)
                 theta = random.uniform(0, 2 * np.pi)
                 x = r * np.cos(theta)
                 y = r * np.sin(theta)
-                z = random.uniform(-0.4, 0.4)
+                z = random.uniform(-0.2, 0.2)
                 return np.array([x, y, z])
 
             box1 = generate_random_box()
@@ -112,7 +112,7 @@ if __name__ == "__main__":
             elif choice == '3':
                 sim.run_multi_throwing_sim(mode='random', use_config=False)
             elif choice == '4':
-                sim.run_multi_throwing_sim(mode='random', use_config=True)
+                sim.run_multi_throwing_sim(mode='greedy', use_config=True)
 
             time.sleep(1)
                 

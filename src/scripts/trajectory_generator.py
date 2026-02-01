@@ -782,7 +782,7 @@ class TrajectoryGenerator:
                                           throw_configs,
                                             intermediate_times,
                                               postures,
-                                                speed_up=5):
+                                                speed_up=4):
         ROBOT_BASE_HEIGHT = 0.5
         n_targets = len(throw_configs)
         
