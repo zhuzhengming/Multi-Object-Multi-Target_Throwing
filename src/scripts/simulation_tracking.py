@@ -43,7 +43,7 @@ class SimulationTracking:
         else:
             print(f"Test config file not found: {self.test_config_path}")
 
-    def run_multi_throwing_sim(self, mode='greedy', use_config=False):
+    def run_multi_throwing_sim(self, mode='greedy', use_config=False, k=None, animate=True):
         if not hasattr(self, 'sim_group_count'):
             self.sim_group_count = 0
 
@@ -74,10 +74,6 @@ class SimulationTracking:
             box1 = generate_random_box()
             box2 = generate_random_box()
             box3 = generate_random_box()
-
-            # box1[2] = -0.3
-            # box2[2] = 0.0
-            # box3[2] = 0.3
             
             print("\n" + "="*60)
             print(f">>> Group {self.sim_group_count + 1} (Auto-generated Random Samples)")
@@ -89,13 +85,48 @@ class SimulationTracking:
             box_positions = np.array([box1, box2, box3])
         
         if mode == 'greedy':
-            self.generator.solve_multi_targets(box_positions, animate=True, full_search=True)
+            res = self.generator.solve_multi_targets(box_positions, animate=animate, full_search=True, k=k)
         elif mode == 'random':
-            self.generator.solve_multi_targets(box_positions, animate=True, full_search=False, random_select=True)
+            res = self.generator.solve_multi_targets(box_positions, animate=animate, full_search=False, random_select=True, k=k)
+        
+        if res and len(res) >= 6:
+            return res[3], res[4], res[5] # search_time, best_duration, total_energy
+        return None, None, None
         
 
-    def run_single_throwing_sim(self, posture='posture1'):
-        self.generator.solve(animate=True, posture=posture)
+    def test_k_influence(self, k_values=[5, 10, 20, 30, 40, 50], use_config=False):
+        print("\n" + "#"*60)
+        print("Testing the influence of parameter k on performance and energy")
+        print("#"*60 + "\n")
+        
+        results = []
+        for k in k_values:
+            print(f"\n--- Testing k = {k} ---")
+            # Reset group count to use the same config for each k if use_config is True
+            original_group_count = getattr(self, 'sim_group_count', 0)
+            self.sim_group_count = 0 
+            
+            comp_time, exe_time, energy = self.run_multi_throwing_sim(mode='greedy', use_config=use_config, k=k, animate=False)
+            
+            if comp_time is not None:
+                results.append({
+                    'k': k,
+                    'computation_time': comp_time,
+                    'execution_time': exe_time,
+                    'energy': energy
+                })
+                print(f"Result for k={k}: Computation Time = {comp_time:.4f}s, Execution Time = {exe_time:.4f}s, Energy = {energy:.4f}J")
+            
+            # Restore group count if needed, but for testing we probably want to stay on the same group
+            # self.sim_group_count = original_group_count
+
+        print("\n" + "="*105)
+        print(f"{'k':>5} | {'Comp Time (s)':>15} | {'Exec Time (s)':>15} | {'Total Time (s)':>15} | {'Energy (J)':>15}")
+        print("-" * 105)
+        for res in results:
+            total_time = res['computation_time'] + res['execution_time']
+            print(f"{res['k']:>5} | {res['computation_time']:>15.4f} | {res['execution_time']:>15.4f} | {total_time:>15.4f} | {res['energy']:>15.4f}")
+        print("="*105 + "\n")
 
 if __name__ == "__main__":
     sim = SimulationTracking()
@@ -103,7 +134,8 @@ if __name__ == "__main__":
     try:
         while True:
             
-            choice = '2'
+            # For automation or testing, we can keep the choice fixed or ask for input
+            choice = '4' 
             
             if choice == '1':
                 sim.run_multi_throwing_sim(mode='greedy', use_config=False)
@@ -112,7 +144,9 @@ if __name__ == "__main__":
             elif choice == '3':
                 sim.run_multi_throwing_sim(mode='random', use_config=False)
             elif choice == '4':
-                sim.run_multi_throwing_sim(mode='greedy', use_config=True)
+                sim.test_k_influence()
+            elif choice == 'q':
+                break
 
             time.sleep(1)
                 

@@ -22,6 +22,7 @@ import mujoco
 from scipy.spatial import KDTree
 import glfw
 import gc
+import pinocchio as pin
 
 
 class TrajectoryGenerator:
@@ -50,15 +51,21 @@ class TrajectoryGenerator:
         else:
             self.robot_path = robot_path
 
-        q_dot_max = np.array([1.71, 1.74, 1.745, 2.269, 2.443, 3.142, 3.142]) * 5.0
+        q_dot_max = np.array([1.71, 1.74, 1.745, 2.269, 2.443, 3.142, 3.142])
         q_dot_min = -q_dot_max
 
         self.robot = VelocityHedgehog(self.q_ll, self.q_ul, q_dot_min, q_dot_max, robot_path, model_exist=model_exist)
+        
+        # pinocchio model for torque/energy calculation
+        urdf_path = os.path.join(current_dir, '../description/iiwa_description/urdf/iiwa7_lasa.urdf')
+        self.pin_model = pin.buildModelFromUrdf(urdf_path)
+        self.pin_data = self.pin_model.createData()
+
         self.load_params()
         self.load_data()
 
     def load_params(self):
-        self.max_velocity = np.array(get_param('/max_velocity')) * 5.0
+        self.max_velocity = np.array(get_param('/max_velocity')) 
         # self.max_acceleration = np.array([15, 7.5, 10, 12.5, 15, 20, 20])
         # self.max_jerk = np.array([7500, 3750, 5000, 6250, 7500, 10000, 10000])
         self.max_acceleration = np.array(get_param('/max_acceleration'))
@@ -648,11 +655,11 @@ class TrajectoryGenerator:
         else:
             return final_trajectory, best_throw_config_pair, intermediate_time
 
-    def solve_multi_targets(self, box_positions, postures=None, animate=True, full_search=False, q0=None, random_select=False):
+    def solve_multi_targets(self, box_positions, postures=None, animate=True, full_search=False, q0=None, random_select=False, k=None):
        
         q0 = q0 if q0 is not None else self.q0
         n_targets = len(box_positions)
-        pos_sort = 30
+        pos_sort = k if k is not None else 30
         if postures is None:
             postures = ['posture1'] * n_targets
             
@@ -769,12 +776,16 @@ class TrajectoryGenerator:
             current_offset += t_obj.duration
             intermediate_times.append(current_offset)
 
-        print(f"total combinations: {total_combinations}, best duration: {best_duration:.2f}s, search time: {time.time()-start_time:.2f}s")
+        search_time = time.time()-start_time
+        print(f"total combinations: {total_combinations}, best duration: {best_duration:.2f}s, search time: {search_time:.2f}s")
         
+        total_energy = self.calculate_energy(total_traj)
+        print(f"Total energy consumption: {total_energy:.2f} J")
+
         if animate:
             self.throw_simulation_mujoco_generic(total_traj, best_configs, intermediate_times, postures)
         
-        return total_traj, best_configs, intermediate_times
+        return total_traj, best_configs, intermediate_times, search_time, best_duration, total_energy
 
 
     def throw_simulation_mujoco_generic(self,
@@ -875,6 +886,32 @@ class TrajectoryGenerator:
                 
             time.sleep(delta_t)
 
+
+    def calculate_energy(self, ref_sequence):
+        """
+        Calculate total energy consumption of a trajectory using Pinocchio's RNEA.
+        Energy = integral(max(tau * q_dot, 0)) dt
+        """
+        if ref_sequence is None or len(ref_sequence['timestamp']) == 0:
+            return 0.0
+            
+        energy = 0.0
+        dt = 1.0 / self.freq
+        
+        for i in range(len(ref_sequence['timestamp'])):
+            q = ref_sequence['position'][i]
+            v = ref_sequence['velocity'][i]
+            a = ref_sequence['acceleration'][i]
+            
+            # RNEA to get joint torques
+            tau = pin.rnea(self.pin_model, self.pin_data, q, v, a)
+            
+            # Mechanical power P = sum(tau_i * v_i)
+            # We only consider positive work (power consumed)
+            power = np.dot(tau, v)
+            energy += max(power, 0) * dt
+            
+        return energy
 
     def process_trajectory(self, traj, time_offset=0.0):
 
