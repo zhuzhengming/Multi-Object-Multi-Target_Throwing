@@ -44,6 +44,15 @@ class SimulationTracking:
         else:
             print(f"Test config file not found: {self.test_config_path}")
 
+    def generate_random_box(self, r_range=(1.5, 2.5), z_range=(-0.2, 0.2)):
+        # Random generation using Polar Coordinates
+        r = random.uniform(*r_range)
+        theta = random.uniform(0, 2 * np.pi)
+        x = r * np.cos(theta)
+        y = r * np.sin(theta)
+        z = random.uniform(*z_range)
+        return np.array([x, y, z])
+
     def run_multi_throwing_sim(self, mode='greedy', use_config=False, k=None, animate=True):
         if not hasattr(self, 'sim_group_count'):
             self.sim_group_count = 0
@@ -62,19 +71,9 @@ class SimulationTracking:
             
             self.sim_group_count += 1
         else:
-            # Random generation using Polar Coordinates
-            def generate_random_box():
-                # Continuous range: 1.2 < r < 2.5
-                r = random.uniform(1.5, 2.5)
-                theta = random.uniform(0, 2 * np.pi)
-                x = r * np.cos(theta)
-                y = r * np.sin(theta)
-                z = random.uniform(-0.2, 0.2)
-                return np.array([x, y, z])
-
-            box1 = generate_random_box()
-            box2 = generate_random_box()
-            box3 = generate_random_box()
+            box1 = self.generate_random_box()
+            box2 = self.generate_random_box()
+            box3 = self.generate_random_box()
             
             print("\n" + "="*60)
             print(f">>> Group {self.sim_group_count + 1} (Auto-generated Random Samples)")
@@ -95,7 +94,7 @@ class SimulationTracking:
         return None, None, None
         
 
-    def test_k_influence(self, k_values=[1, 5, 10, 20, 40, 60, 100, 200, None], use_config=True, box_positions=None):
+    def test_k_influence(self, k_values=[1, 5, 10, 20, 50, None], use_config=True, box_positions=None, save_filename=None, save_to_csv=True):
         print("\n" + "#"*60)
         print("Testing the influence of parameter k on performance and energy")
         print("#"*60 + "\n")
@@ -119,29 +118,37 @@ class SimulationTracking:
             if comp_time is not None:
                 results.append({
                     'k': k,
-                    'computation_time': comp_time,
-                    'execution_time': exe_time,
-                    'energy': energy
+                    'computation_time': round(comp_time, 3),
+                    'execution_time': round(exe_time, 3),
+                    'energy': round(energy, 3)
                 })
-                print(f"Result for k={k}: Computation Time = {comp_time:.4f}s, Execution Time = {exe_time:.4f}s, Energy = {energy:.4f}J")
+                print(f"Result for k={k}: Computation Time = {comp_time:.3f}s, Execution Time = {exe_time:.3f}s, Energy = {energy:.3f}J")
 
-        # Save results to /output
-        output_dir = os.path.abspath(os.path.join(current_dir, '../output'))
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"k_experiment_{timestamp}.csv"
-        save_path = os.path.join(output_dir, filename)
-        
-        # Write to CSV
-        keys = results[0].keys() if results else []
-        with open(save_path, 'w', newline='') as f:
-            dict_writer = csv.DictWriter(f, fieldnames=keys)
-            dict_writer.writeheader()
-            dict_writer.writerows(results)
+        if not results:
+            return None
+
+        # Save results to /output if save_to_csv is True
+        if save_to_csv:
+            output_dir = os.path.abspath(os.path.join(current_dir, '../output'))
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
             
-        print(f"\nExperiment data saved to: {save_path}")
+            if save_filename is None:
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                filename = f"k_experiment_{timestamp}.csv"
+            else:
+                filename = save_filename
+                
+            save_path = os.path.join(output_dir, filename)
+            
+            # Write to CSV
+            keys = results[0].keys() if results else []
+            with open(save_path, 'w', newline='') as f:
+                dict_writer = csv.DictWriter(f, fieldnames=keys)
+                dict_writer.writeheader()
+                dict_writer.writerows(results)
+                
+            print(f"\nExperiment data saved to: {save_path}")
 
         print("\n" + "="*105)
         print(f"{'k':>5} | {'Comp Time (s)':>15} | {'Exec Time (s)':>15} | {'Total Time (s)':>15} | {'Energy (J)':>15}")
@@ -149,9 +156,50 @@ class SimulationTracking:
         for res in results:
             total_time = res['computation_time'] + res['execution_time']
             k_str = "Full" if res['k'] is None else str(res['k'])
-            print(f"{k_str:>5} | {res['computation_time']:>15.4f} | {res['execution_time']:>15.4f} | {total_time:>15.4f} | {res['energy']:>15.4f}")
+            print(f"{k_str:>5} | {res['computation_time']:>15.3f} | {res['execution_time']:>15.3f} | {total_time:>15.3f} | {res['energy']:>15.3f}")
         print("="*105 + "\n")
-        return save_path
+        return results
+
+    def run_k_test_batch(self, num_experiments=10, k_values=[1, 5, 10, 20, 50, 80, 100, None]):
+        print(f"\nStarting Batch k-influence Experiment ({num_experiments} rounds)")
+        all_results = []
+        
+        for i in range(num_experiments):
+            print(f"\n{'='*25} Experiment Round {i+1}/{num_experiments} {'='*25}")
+            # Use smaller radius and z-range for higher success probability as found in testing
+            box1 = self.generate_random_box(r_range=(0.8, 1.2), z_range=(-0.1, 0.0))
+            box2 = self.generate_random_box(r_range=(0.8, 1.2), z_range=(-0.1, 0.0))
+            box3 = self.generate_random_box(r_range=(0.8, 1.2), z_range=(-0.1, 0.0))
+            box_positions = np.array([box1, box2, box3])
+            
+            round_results = self.test_k_influence(k_values=k_values, box_positions=box_positions, save_to_csv=False)
+            
+            if round_results:
+                for res in round_results:
+                    res['experiment_round'] = i + 1
+                    all_results.append(res)
+                
+                # Add a divider row between rounds
+                if i < num_experiments - 1:
+                    divider = {key: "--------------" for key in all_results[-1].keys()}
+                    all_results.append(divider)
+            else:
+                print(f"Round {i+1} failed to find valid candidates.")
+
+        if all_results:
+            output_dir = os.path.abspath(os.path.join(current_dir, '../output'))
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"k_batch_experiment_{timestamp}.csv"
+            save_path = os.path.join(output_dir, filename)
+            
+            keys = all_results[0].keys()
+            with open(save_path, 'w', newline='') as f:
+                dict_writer = csv.DictWriter(f, fieldnames=keys)
+                dict_writer.writeheader()
+                dict_writer.writerows(all_results)
+            print(f"\nAll {num_experiments} experiments completed. Batch data saved to: {save_path}")
+        else:
+            print("\nNo experiments succeeded.")
 
 if __name__ == "__main__":
     sim = SimulationTracking()
@@ -159,12 +207,12 @@ if __name__ == "__main__":
     # Example box positions for experiment
     box1 = np.array([1.25, 0.35, -0.1])
     box2 = np.array([0.4, 1.3, -0.1])
-    box3 = np.array([1.5, -0.5, 0.0])
-    example_boxes = np.array([box1, box2, box3])
+    box3 = np.array([1.0, -0.8, 0.0])
+    example_boxes = np.array([box1, box2])
     
     try:
         
-        choice = '4' 
+        choice = '6'
         
         if choice == '1':
             sim.run_multi_throwing_sim(mode='greedy', use_config=False)
@@ -176,6 +224,8 @@ if __name__ == "__main__":
             sim.test_k_influence(k_values=[1, 5, 10, 20, 50, None], box_positions=example_boxes)
         elif choice == '5':
             sim.test_k_influence(use_config=True)
+        elif choice == '6':
+            sim.run_k_test_batch(num_experiments=10)
         elif choice == 'q':
             sys.exit(0)
             
