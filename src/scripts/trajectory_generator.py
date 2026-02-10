@@ -440,6 +440,7 @@ class TrajectoryGenerator:
                 if joint_limit_counters['max'][j] > 0 or joint_limit_counters['min'][j] > 0:
                     print(f"  Joint {j}: Exceed Max: {joint_limit_counters['max'][j]}, Below Min: {joint_limit_counters['min'][j]}")
 
+        print(f"    - generate_throw_config summary: input {n_candidates}, output {len(trajs)} (OutLimit: {num_outlimit}, VelLimit: {num_vel_limit}, RuckigErr: {num_ruckiger})")
         return trajs, throw_configs
 
 
@@ -655,32 +656,24 @@ class TrajectoryGenerator:
         else:
             return final_trajectory, best_throw_config_pair, intermediate_time
 
-    def solve_multi_targets(self, box_positions, postures=None, animate=True, full_search=False, q0=None, random_select=False, k=None):
-       
+    def solve_multi_targets(self, box_positions, postures=None, animate=True, full_search=False, q0=None, random_select=False, k=30):
         q0 = q0 if q0 is not None else self.q0
         n_targets = len(box_positions)
-        pos_sort = k if k is not None else 30
+        pos_sort = k
         if postures is None:
             postures = ['posture1'] * n_targets
             
         start_time = time.time()
         
-        all_targets_configs = []
+        target_pools = []
         for i in range(n_targets):
             pos = box_positions[i]
             posture = postures[i]
             base = pos[:2]
             
             q_c, phi_c, x_c = self.brt_robot_data_matching(posture=posture, box_pos=pos)
-            if full_search:
-                q_c, phi_c, x_c = self.filter_candidates(q_c, phi_c, x_c,
-                                                          thres_r_ratio=1.0,
-                                                            thres_phi_ratio=0.5)
-            else:
-                q_c, phi_c, x_c = self.filter_candidates(q_c, phi_c, x_c,
-                                                         thres_r_ratio=1.0,
-                                                          thres_phi_ratio=1.0)
-                
+            q_c, phi_c, x_c = self.filter_candidates(q_c, phi_c, x_c, thres_r_ratio=1.0, thres_phi_ratio=1.0)
+            
             if len(q_c) == 0:
                 print(f"target {i} candidates is empty")
                 return None, None, None
@@ -692,68 +685,66 @@ class TrajectoryGenerator:
             )
             
             if len(throw_configs) == 0:
-                print(f"target {i} config is empty")
+                print(f"target {i} config pool is empty")
                 return None, None, None
             
-            throw_configs.sort(key=lambda cfg: np.linalg.norm(cfg[-1][:2] - base))
-            if len(throw_configs) > pos_sort:
-                throw_configs = throw_configs[:pos_sort]
+            target_pools.append(throw_configs)
+
+        active_paths = []
+        pool0 = target_pools[0]
+        
+        # Calculate distances from initial state q0
+        q_cand = np.array([cfg[0] for cfg in pool0])
+        qdot_cand = np.array([cfg[3] for cfg in pool0])
+        distances = (np.linalg.norm(q_cand - q0, axis=1, ord=2) + 
+                     2.0 * np.linalg.norm(qdot_cand - np.zeros(7), axis=1))
+        
+        sorted_idx = np.argsort(distances)
+        candidates0 = [pool0[idx] for idx in sorted_idx[:pos_sort]]
+        
+        for cfg in candidates0:
+            try:
+                t = self.get_traj_from_ruckig(q0, np.zeros(7), cfg[0], cfg[3])
+                if t and t.duration > 1e-10:
+                    active_paths.append(([cfg], [t], t.duration))
+            except:
+                continue
+        
+        print(f"Layer 0: Kept {len(active_paths)} top-{pos_sort} valid configurations for Target 0")
+
+        for i in range(1, n_targets):
+            new_paths = []
+            pool = target_pools[i]
             
-            if random_select:
-                np.random.shuffle(throw_configs)
+            for path_configs, path_trajs, total_dur in active_paths:
+                q_ref = path_configs[-1][0]
+                qdot_ref = path_configs[-1][3]
                 
-            all_targets_configs.append(throw_configs)
-
-        all_sequences = itertools.product(*all_targets_configs)
-        total_combinations = np.prod([len(configs) for configs in all_targets_configs])
-        print(f"total combinations: {total_combinations}")
-
-        best_duration = np.inf
-        best_result = None 
-        count = 0
-
-        for seq in all_sequences:
-            count += 1
-            if count % 1000 == 0:
-                print(f"progress: {count}/{total_combinations}...", end='\r')
+                q_cand = np.array([cfg[0] for cfg in pool])
+                qdot_cand = np.array([cfg[3] for cfg in pool])
+                distances = (np.linalg.norm(q_cand - q_ref, axis=1, ord=2) + 
+                             2.0 * np.linalg.norm(qdot_cand - qdot_ref, axis=1))
                 
-            current_q = q0
-            current_q_dot = np.zeros(7)
-            current_total_duration = 0
-            temp_trajs = []
-            valid_seq = True
+                sorted_idx = np.argsort(distances)
+                candidates = [pool[idx] for idx in sorted_idx[:pos_sort]]
+                
+                for cand in candidates:
+                    try:
+                        t = self.get_traj_from_ruckig(q_ref, qdot_ref, cand[0], cand[3])
+                        if t and t.duration > 1e-10:
+                            new_paths.append((path_configs + [cand], path_trajs + [t], total_dur + t.duration))
+                    except:
+                        continue
             
-            for i in range(n_targets):
-                target_q = seq[i][0]
-                target_q_dot = seq[i][3]
-                try:
-                    t = self.get_traj_from_ruckig(current_q, current_q_dot, target_q, target_q_dot)
-                    if t is None or t.duration < 1e-10:
-                        valid_seq = False; break
-                    current_total_duration += t.duration
-                    
-                    if not random_select and current_total_duration >= best_duration:
-                        valid_seq = False; break
-                    
-                    temp_trajs.append(t)
-                    current_q, current_q_dot = target_q, target_q_dot
-                except:
-                    valid_seq = False; break
+            active_paths = new_paths
+            if not active_paths:
+                print(f"Target {i}: No valid path found from previous steps")
+                return None, None, None
             
-            if valid_seq:
-                if random_select:
-                    best_duration = current_total_duration
-                    best_result = (list(seq), temp_trajs)
-                    break # Found the first valid one in shuffled order
-                elif current_total_duration < best_duration:
-                    best_duration = current_total_duration
-                    best_result = (list(seq), temp_trajs)
+            print(f"Layer {i}: Generated {len(active_paths)} candidate paths")
 
-        if best_result is None:
-            print("no valid trajectory sequence found")
-            return None, None, None
-
-        best_configs, best_trajs = best_result
+        best_path = min(active_paths, key=lambda x: x[2])
+        best_configs, best_trajs, best_duration = best_path
         
         total_traj = {
             'timestamp': np.array([]),
@@ -777,7 +768,7 @@ class TrajectoryGenerator:
             intermediate_times.append(current_offset)
 
         search_time = time.time()-start_time
-        print(f"total combinations: {total_combinations}, best duration: {best_duration:.2f}s, search time: {search_time:.2f}s")
+        print(f"Tree Search complete. Best duration: {best_duration:.2f}s, search time: {search_time:.2f}s, paths explored: {len(active_paths)}")
         
         total_energy = self.calculate_energy(total_traj)
         print(f"Total energy consumption: {total_energy:.2f} J")

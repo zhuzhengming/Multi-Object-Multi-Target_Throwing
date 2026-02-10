@@ -4,6 +4,7 @@ import numpy as np
 import time
 import random
 import yaml
+import csv
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(current_dir, "../"))
@@ -94,7 +95,7 @@ class SimulationTracking:
         return None, None, None
         
 
-    def test_k_influence(self, k_values=[5, 10, 20, 30, 40, 50], use_config=False):
+    def test_k_influence(self, k_values=[1, 5, 10, 20, 40, 60, 100, 200, None], use_config=True, box_positions=None):
         print("\n" + "#"*60)
         print("Testing the influence of parameter k on performance and energy")
         print("#"*60 + "\n")
@@ -102,11 +103,18 @@ class SimulationTracking:
         results = []
         for k in k_values:
             print(f"\n--- Testing k = {k} ---")
-            # Reset group count to use the same config for each k if use_config is True
-            original_group_count = getattr(self, 'sim_group_count', 0)
-            self.sim_group_count = 0 
             
-            comp_time, exe_time, energy = self.run_multi_throwing_sim(mode='greedy', use_config=use_config, k=k, animate=False)
+            if box_positions is not None:
+                # Direct solve if box_positions are provided
+                res = self.generator.solve_multi_targets(box_positions, animate=False, full_search=True, k=k)
+                if res and len(res) >= 6:
+                    comp_time, exe_time, energy = res[3], res[4], res[5]
+                else:
+                    comp_time, exe_time, energy = None, None, None
+            else:
+                # Reset group count to use the same config for each k if use_config is True
+                self.sim_group_count = 0 
+                comp_time, exe_time, energy = self.run_multi_throwing_sim(mode='greedy', use_config=use_config, k=k, animate=False)
             
             if comp_time is not None:
                 results.append({
@@ -116,40 +124,61 @@ class SimulationTracking:
                     'energy': energy
                 })
                 print(f"Result for k={k}: Computation Time = {comp_time:.4f}s, Execution Time = {exe_time:.4f}s, Energy = {energy:.4f}J")
+
+        # Save results to /output
+        output_dir = os.path.abspath(os.path.join(current_dir, '../output'))
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        filename = f"k_experiment_{timestamp}.csv"
+        save_path = os.path.join(output_dir, filename)
+        
+        # Write to CSV
+        keys = results[0].keys() if results else []
+        with open(save_path, 'w', newline='') as f:
+            dict_writer = csv.DictWriter(f, fieldnames=keys)
+            dict_writer.writeheader()
+            dict_writer.writerows(results)
             
-            # Restore group count if needed, but for testing we probably want to stay on the same group
-            # self.sim_group_count = original_group_count
+        print(f"\nExperiment data saved to: {save_path}")
 
         print("\n" + "="*105)
         print(f"{'k':>5} | {'Comp Time (s)':>15} | {'Exec Time (s)':>15} | {'Total Time (s)':>15} | {'Energy (J)':>15}")
         print("-" * 105)
         for res in results:
             total_time = res['computation_time'] + res['execution_time']
-            print(f"{res['k']:>5} | {res['computation_time']:>15.4f} | {res['execution_time']:>15.4f} | {total_time:>15.4f} | {res['energy']:>15.4f}")
+            k_str = "Full" if res['k'] is None else str(res['k'])
+            print(f"{k_str:>5} | {res['computation_time']:>15.4f} | {res['execution_time']:>15.4f} | {total_time:>15.4f} | {res['energy']:>15.4f}")
         print("="*105 + "\n")
+        return save_path
 
 if __name__ == "__main__":
     sim = SimulationTracking()
     
+    # Example box positions for experiment
+    box1 = np.array([1.25, 0.35, -0.1])
+    box2 = np.array([0.4, 1.3, -0.1])
+    box3 = np.array([1.5, -0.5, 0.0])
+    example_boxes = np.array([box1, box2, box3])
+    
     try:
-        while True:
+        
+        choice = '4' 
+        
+        if choice == '1':
+            sim.run_multi_throwing_sim(mode='greedy', use_config=False)
+        elif choice == '2':
+            sim.run_multi_throwing_sim(mode='greedy', use_config=True)
+        elif choice == '3':
+            sim.run_multi_throwing_sim(mode='random', use_config=False)
+        elif choice == '4':
+            sim.test_k_influence(k_values=[1, 5, 10, 20, 50, None], box_positions=example_boxes)
+        elif choice == '5':
+            sim.test_k_influence(use_config=True)
+        elif choice == 'q':
+            sys.exit(0)
             
-            # For automation or testing, we can keep the choice fixed or ask for input
-            choice = '4' 
-            
-            if choice == '1':
-                sim.run_multi_throwing_sim(mode='greedy', use_config=False)
-            elif choice == '2':
-                sim.run_multi_throwing_sim(mode='greedy', use_config=True)
-            elif choice == '3':
-                sim.run_multi_throwing_sim(mode='random', use_config=False)
-            elif choice == '4':
-                sim.test_k_influence()
-            elif choice == 'q':
-                break
-
-            time.sleep(1)
-                
     except KeyboardInterrupt:
         print("\n simulation tracking exit")
     except Exception as e:
