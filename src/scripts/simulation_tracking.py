@@ -160,7 +160,7 @@ class SimulationTracking:
         print("="*105 + "\n")
         return results
 
-    def run_k_test_batch(self, num_experiments=10, k_values=[1, 5, 10, 20, 50, 80, 100, None]):
+    def run_k_test_batch(self, num_experiments=10, k_values=[1, 5, 10, 20, 50, 80, None], save_filename=None):
         print(f"\nStarting Batch k-influence Experiment ({num_experiments} rounds)")
         all_results = []
         
@@ -170,7 +170,8 @@ class SimulationTracking:
             box1 = self.generate_random_box(r_range=(0.8, 1.2), z_range=(-0.1, 0.0))
             box2 = self.generate_random_box(r_range=(0.8, 1.2), z_range=(-0.1, 0.0))
             box3 = self.generate_random_box(r_range=(0.8, 1.2), z_range=(-0.1, 0.0))
-            box_positions = np.array([box1, box2, box3])
+            box4 = self.generate_random_box(r_range=(0.8, 1.2), z_range=(-0.1, 0.0))
+            box_positions = np.array([box1, box2, box3, box4])
             
             round_results = self.test_k_influence(k_values=k_values, box_positions=box_positions, save_to_csv=False)
             
@@ -189,7 +190,7 @@ class SimulationTracking:
         if all_results:
             output_dir = os.path.abspath(os.path.join(current_dir, '../output'))
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            filename = f"k_batch_experiment_{timestamp}.csv"
+            filename = save_filename if save_filename else f"k_batch_experiment_{timestamp}.csv"
             save_path = os.path.join(output_dir, filename)
             
             keys = all_results[0].keys()
@@ -203,17 +204,16 @@ class SimulationTracking:
 
 if __name__ == "__main__":
     sim = SimulationTracking()
-    
+
     # Example box positions for experiment
     box1 = np.array([1.25, 0.35, -0.1])
     box2 = np.array([0.4, 1.3, -0.1])
     box3 = np.array([1.0, -0.8, 0.0])
     example_boxes = np.array([box1, box2])
-    
+
     try:
-        
-        choice = '2'
-        
+        choice = '6'
+
         if choice == '1':
             sim.run_multi_throwing_sim(mode='greedy', use_config=False)
         elif choice == '2':
@@ -228,7 +228,7 @@ if __name__ == "__main__":
             sim.run_k_test_batch(num_experiments=10)
         elif choice == 'q':
             sys.exit(0)
-            
+
     except KeyboardInterrupt:
         print("\n simulation tracking exit")
     except Exception as e:
