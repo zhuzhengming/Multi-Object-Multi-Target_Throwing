@@ -18,7 +18,7 @@ class SimulationTracking:
         self.hedgehog_path = os.path.abspath(os.path.join(current_dir, '../hedgehog_data'))
         self.brt_path = os.path.abspath(os.path.join(current_dir, '../brt_data'))
         self.robot_path = os.path.abspath(os.path.join(current_dir, '../description/iiwa7_allegro_throwing.xml'))
-        self.test_config_path = os.path.abspath(os.path.join(current_dir, '../config/test_samples_random.yaml'))
+        self.test_config_path = os.path.abspath(os.path.join(current_dir, '../config/test_samples.yaml'))
         
         self.q_min = np.array([-2.96705972839, -2.09439510239, -2.96705972839, -2.09439510239, -2.96705972839,
                           -2.09439510239, -3.05432619099])
@@ -212,7 +212,7 @@ if __name__ == "__main__":
     
     try:
         
-        choice = '6'
+        choice = '2'
         
         if choice == '1':
             sim.run_multi_throwing_sim(mode='greedy', use_config=False)
