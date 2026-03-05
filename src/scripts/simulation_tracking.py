@@ -160,7 +160,7 @@ class SimulationTracking:
         print("="*105 + "\n")
         return results
 
-    def run_k_test_batch(self, num_experiments=10, k_values=[1, 5, 10, 20, 50, 80, None], save_filename=None):
+    def run_k_test_batch(self, num_experiments=10, k_values=[1, 5, 10, 20, 30, 50, 80, None], save_filename=None):
         print(f"\nStarting Batch k-influence Experiment ({num_experiments} rounds)")
         all_results = []
         
